@@ -1,0 +1,40 @@
+# Logs
+*.log
+nohup.out
+*.nohup
+
+# Python
+**/__pycache__
+.tox
+.pytest_cache
+.cache
+Pipfile.lock
+*.pyc
+.coverage
+dist/
+*.egg-info/
+pipeline.log
+
+# Pycharm
+.idea/
+
+# OSX Specific
+*.DS_Store
+.DS_Store
+
+# VScode
+/.vscode
+
+# Jupyter notebooks
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# Local Spark Test DB
+metastore_db/
+
+# Environment Configurations
+.env
+
+# Emacs
+*~
+\#*\#
