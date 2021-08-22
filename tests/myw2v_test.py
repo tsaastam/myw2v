@@ -14,7 +14,7 @@ os.environ["NUMBA_ENABLE_CUDASIM"] = "1"
 from numba import cuda
 from numba.cuda import random as c_random
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../')))
 
 from myw2v.myw2v import BLANK_TOKEN
 from myw2v import myw2v
