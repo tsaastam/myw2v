@@ -29,7 +29,7 @@ Check out the unit tests (and the rest of the code) to see how things work and w
     conda activate myw2v-demo
     python mywv2/demo.py
 
-The demo code will first download & process a partial Wikipedia dump and then train a myw2v model on it. Notice that this will require a few gigabytes of disk and will also take a while. Please see `demo.py` for details. (TODO: maybe give details here)
+The demo code will first download & process a partial Wikipedia dump and then train a myw2v model on it. Notice that this will require a few gigabytes of disk and will also take a while. Please see `demo.py` for details, or just run it and it will print the details and wait for a key press.
 
 After training, the demo code uses gensim to do the standard "word analogy" task on the trained vectors, to gauge accuracy.
 
@@ -38,6 +38,5 @@ In addition, the demo code will also train another word2vec model on the same da
 ## TODO
 
 - Parameterise all the model parameters properly
-- Improve demo: 1) tell user what will happen 2) "press any key" :)
 - Report demo results maybe
 

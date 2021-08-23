@@ -1,9 +1,11 @@
+import os
+import pathlib
 import time
 from typing import List
 
 from gensim.models import KeyedVectors
 
-from myw2v.myword2vec.demo import OUT_PATH_VECTORS
+import demo
 
 
 def load(vectors_path: str) -> KeyedVectors:
@@ -23,5 +25,9 @@ def print_most_similars(vecs: KeyedVectors, words: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    my_vec = load(OUT_PATH_VECTORS)
+    root_maybe = os.path.join(pathlib.Path.cwd(), 'demo_data')
+    txt_path_possibly, _ = demo.make_out_paths(root_maybe)
+
+    my_vec = load(txt_path_possibly)
+    # TODO just incorporate this into demo.py
     print_most_similars(my_vec, ["ocean", "network", "parliament", "algorithm", "fusion", "history", "robot"])

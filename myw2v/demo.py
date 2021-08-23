@@ -1,9 +1,10 @@
+import argparse
 import json
 import os
 import pathlib
 import re
 import time
-from typing import List
+from typing import List, Tuple
 
 import requests
 import tqdm
@@ -15,12 +16,16 @@ from gensim.scripts import segment_wiki
 
 import myw2v
 
-OUT_PATH_ROOT = "e:/data/wikip_for_myw2v_oh_yeah"
-OUT_PATH_TXT_DIR = os.path.join(OUT_PATH_ROOT, "txt")
-OUT_PATH_VECTORS = os.path.join(OUT_PATH_ROOT, "vectors")
-# see https://dumps.wikimedia.org/enwiki/20210801/
+# see e.g. https://dumps.wikimedia.org/enwiki/20210801/
 URLS = ["https://dumps.wikimedia.org/enwiki/20210801/enwiki-20210801-pages-articles-multistream6.xml-p958046p1483661.bz2"]
 FILENAMES = [re.sub(r".*/([^/]+)$", r"\1", url) for url in URLS]
+
+
+def make_out_paths(root: str) -> Tuple[str, str]:
+    print(f"Checking target directory: '{root}'...")
+    pathlib.Path(root).mkdir(parents=True, exist_ok=True)
+    # was ok
+    return os.path.join(root, "txt"), os.path.join(root, "vectors")
 
 
 def maybe_download(urls: List[str], filenames: List[str], out_path_root: str) -> List[str]:
@@ -201,28 +206,54 @@ class EpochTimer(CallbackAny2Vec):
 
 
 if __name__ == "__main__":
-    # total data size: approx 2.5 GB for one source file of 500 MB
-    # total time to run this: approx 46 min
-    #
-    # data download & parse: 8-10 min (1.5 GB output)
-    # word2vec model build & check: 16 min (500 MB output file)
-    # gensim model build & check: 21 min (500 MB output file)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--data_dir", default=os.path.join(pathlib.Path.cwd(), 'demo_data'))
+    a = parser.parse_args()
+    root_data_dir = a.data_dir
+
+    print("--- myw2v demo, v0.1 ---")
+    print("")
+    print("This script will:")
+    print("1) Download a partial Wikipedia dump")
+    print("2) Process it into sentences, saved into plain text files, one line per sentence")
+    print("3) Train a word2vec model using 'myw2v' on these sentences and save the model vectors")
+    print("4) Run a word analogy test on the resulting vectors to gauge 'accuracy'")
+    print("5) Train another word2vec model using 'gensim' on these same sentences and save the vectors")
+    print("6) Run the same word analogy test on the gensim vectors for comparison")
+    print("")
+    print("The downloaded & processed data are cached (badly). To re-process, delete any existing.")
+    print("")
+    print("Btw, this might take a while and require some space:")
+    print("")
+    print("- Total download: approx 500 MB (one file)")
+    print("- Total data saved to disk: approx 2.5 GB (assuming one file)")
+    print("- Total time to run: approx 45 min (on my machine...)")
+    print("  - Data download & parse: 8-10 min / 1.5 GB disk")
+    print("  - myw2v model build & check: 15 min / 500 MB disk")
+    print("  - gensim model build & check: 20 min / 500 MB disk")
+    print("")
+    print(f"---> WILL DOWNLOAD STUFF INTO DIR: '{root_data_dir}'  <- change with '-d <dir_name>' btw")
+    print("")
+    print("---> PRESS ANY KEY TO CONTINUE (or Ctrl-C to cancel)")
+    _ = input()
+
+    out_path_txt_dir, out_path_vectors_file = make_out_paths(root_data_dir)
 
     # about 2 min per file (approx 500 MB)
-    filenames = maybe_download(URLS, FILENAMES, OUT_PATH_ROOT)
+    filenames = maybe_download(URLS, FILENAMES, root_data_dir)
     # about 3.5 min per file (approx 300 MB)
-    jsons = maybe_process_bz2_into_json(OUT_PATH_ROOT, filenames)
+    jsons = maybe_process_bz2_into_json(root_data_dir, filenames)
     # about 2.5 min per json file (approx 660 MB) - multiple output files (1000+)
-    maybe_clean_up_json(jsons, OUT_PATH_TXT_DIR)
+    maybe_clean_up_json(jsons, out_path_txt_dir)
 
     # about 10 minutes for 10 epochs - 40 s per epoch, rest overhead (TODO: other settings)
-    maybe_train_myw2v_model(OUT_PATH_TXT_DIR, OUT_PATH_VECTORS, epochs=10)
+    maybe_train_myw2v_model(out_path_txt_dir, out_path_vectors_file, epochs=10)
     # about 6 minutes, funnily enough
-    check_accuracy(OUT_PATH_VECTORS)
+    check_accuracy(out_path_vectors_file)
 
     # about 15 minutes for 10 epochs - 70 s per epoch, rest overhead
-    TODO_gensim_path = OUT_PATH_VECTORS+"_gensim_joo"
+    TODO_gensim_path = out_path_vectors_file+"_gensim_joo"
 
-    maybe_train_gensim_model(OUT_PATH_TXT_DIR, TODO_gensim_path, epochs=10)
+    maybe_train_gensim_model(out_path_txt_dir, TODO_gensim_path, epochs=10)
     # about 6 minutes, funnily enough
     check_accuracy(TODO_gensim_path)
