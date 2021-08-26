@@ -65,7 +65,7 @@ def maybe_process_bz2_into_json(path: str, files: List[str]) -> List[str]:
     return outfiles
 
 
-def maybe_clean_up_json(json_files: List[str], out_path: str, batch_size_min: int = 10000) -> None:
+def maybe_clean_up_json(json_files: List[str], out_path: str, batch_size_min: int = 100000) -> None:
     if os.path.isdir(out_path):
         print(f"Text output path '{out_path}' seems to exist already - skipping!")
         return
@@ -174,7 +174,7 @@ def _clean_up(s: str) -> List[List[str]]:
     for sent_str in sentences_probably:
         a = re.sub(r"[\t\n]", " ", sent_str)
         b = re.sub(r"[ ]{2,}", " ", a)
-        # yeah super quick & dirty here
+        # TODO: yeah super quick & dirty here...
         c = re.sub(r"[^a-zA-Z ]", "", b)
         words = [w.lower() for w in c.split(" ") if w]
         if words:
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     a = parser.parse_args()
     root_data_dir = a.data_dir
 
-    print("--- myw2v demo, v0.1 ---")
+    print(f"--- myw2v demo, v{myw2v.MYW2V_VERSION} ---")
     print("")
     print("This script will:")
     print("1) Download a partial Wikipedia dump")

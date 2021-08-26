@@ -12,14 +12,14 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+import json
 import math
 import os
 import pathlib
 import re
 import time
 from collections import defaultdict
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 
 from numba import cuda
 from numba.cuda import random as c_random
@@ -27,6 +27,7 @@ import numpy as np
 from numpy import linalg, ndarray
 
 
+MYW2V_VERSION = "0.1"
 BLANK_TOKEN = "<BLANK>"
 
 
@@ -134,6 +135,7 @@ def read_all_data_files_ever(dat_path: str, file_names: List[str], w_to_i: Dict[
                 le = len(idcs)
                 # note that idcs might be missing some words which are too rare to be in the vocab -
                 # the data isn't pre-pruned, but the vocab is. this is fine
+                # - TODO: if len(idcs) < 2, continue?
                 ok_lines += 1
                 offs.append(offset_total)
                 lens.append(le)
@@ -183,6 +185,13 @@ def write_vectors(weights_cuda, vocab: List[Tuple[str, float]], out_path: str):
             v_str = " ".join([str(f) for f in v])
             word, _ = vocab[i]
             f.write(f"{word} {v_str}\n")
+
+
+def write_params(params: Dict[str, Any], params_path: str):
+    with open(params_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(params))
+        f.write("\n")
+        f.flush()
 
 
 @cuda.jit
@@ -277,43 +286,60 @@ def step(thread_idx, w1, w2, calc_aux, x, y, k, learning_rate, negsample_array, 
         w1[x, i] += calc_aux[thread_idx, i]
 
 
-def do_it(data_path: str, out_file_path: str, epochs: int):
+def do_it(data_path: str,
+          out_file_path: str,
+          epochs: int,
+          embed_dim: int = 100,
+          min_occurs: int = 3,
+          c: int = 5,
+          k: int = 5,
+          t: float = 1e-5,
+          vocab_freq_exponent: float = 0.75,
+          lr_max: float = 0.025,
+          lr_min: float = 0.0025,
+          cuda_threads_per_block: int = 32):
     # TODO: note: same seed can give different results - this is probably because of kernel execution order differences
     # - seed can still be useful for unit test
-    # TODO: parameterise all the parameters...
+    params = {
+        "myw2v_version": MYW2V_VERSION,
+        "data_path": data_path,
+        "out_file_path": out_file_path,
+        "epochs": epochs,
+        "embed_dim": embed_dim,
+        "min_occurs": min_occurs,
+        "c": c,
+        "k": k,
+        "t": t,
+        "vocab_freq_exponent": vocab_freq_exponent,
+        "lr_max": lr_max,
+        "lr_min": lr_min
+    }
+
     seed = 12345
-    embed_dim = 100
-    min_occurs = 3
-    c = 5
-    k = 5
-    t = 1e-5
-    lr_max = 0.025
-    lr_min = 0.0025
     lr_step = (lr_max-lr_min) / (epochs-1)
-    threads_per_block = 32
 
     print(f"Seed: {seed}")
     print(f"Word2vec params: c {c}, k {k}, learning rate from {lr_max} to {lr_min} by steps of {lr_step}...")
+    print(f"Full params: {params}")
 
     print(f"Data path: '{data_path}'. Building vocabulary first (going through full data)...")
     start = time.time()
 
-    vocab, w_to_i = handle_vocab(data_path, min_occurs, freq_exponent=0.75)
+    vocab, w_to_i = handle_vocab(data_path, min_occurs, freq_exponent=vocab_freq_exponent)
     ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
     vocab_size = len(vocab)
-    vocab_dur = time.time() - start
-    print(f"Vocabulary build took {vocab_dur} s. Vocab size {vocab_size}, embedding dimension {embed_dim}")
+    print(f"Vocabulary build took {time.time() - start} s. Vocab size {vocab_size}, embedding dimension {embed_dim}")
 
     data_files = get_data_file_names(data_path, seed=seed)
     print(f"Gonna process data. First few data files btw: {data_files[0:10]}")
     inps_, offs_, lens_ = read_all_data_files_ever(data_path, data_files, w_to_i)
     inps, offs, lens = np.asarray(inps_, dtype=np.int32), np.asarray(offs_, dtype=np.int32), np.asarray(lens_, dtype=np.int32)
     sentence_count = len(lens)
-    blocks: int = math.ceil(sentence_count / threads_per_block)
+    blocks: int = math.ceil(sentence_count / cuda_threads_per_block)
     print(f"inps: {inps[0:10]}")
     print(f"offs: {offs[0:10]}")
     print(f"lens: {lens[0:10]}")
-    print(f"CUDA kernel launch params: {threads_per_block} threads per block, {blocks} blocks ({sentence_count} sentences/threads)")
+    print(f"CUDA kernel launch params: {cuda_threads_per_block} threads per block, {blocks} blocks ({sentence_count} sentences/threads)")
 
     data_init_start = time.time()
     w1, w2 = init_weight_matrices(vocab_size, embed_dim, seed=seed)
@@ -347,7 +373,7 @@ def do_it(data_path: str, out_file_path: str, epochs: int):
     for epoch in range(0, epochs):
         lr = lr_max - (epoch*lr_step)
         epoch_start = time.time()
-        calc[blocks, threads_per_block](sentence_count, c, k, lr, w1_cuda, w2_cuda, calc_aux_cuda, random_states_cuda, ssw_cuda, negs_cuda, inps_cuda, offs_cuda, lens_cuda)
+        calc[blocks, cuda_threads_per_block](sentence_count, c, k, lr, w1_cuda, w2_cuda, calc_aux_cuda, random_states_cuda, ssw_cuda, negs_cuda, inps_cuda, offs_cuda, lens_cuda)
         print(f"  Kernel launch in {time.time()-epoch_start} s. Synchronising (btw: learning rate was {lr})...")
         sync_start = time.time()
         cuda.synchronize()
@@ -361,4 +387,7 @@ def do_it(data_path: str, out_file_path: str, epochs: int):
     print_norms(w1_cuda)
     print(f"Writing vectors to file: '{out_file_path}'...")
     write_vectors(w1_cuda, vocab, out_file_path)
+    params_path = out_file_path + "_params.json"
+    print(f"Writing parameters to file: '{params_path}'...")
+    write_params(params, params_path)
     print("DONE!")
