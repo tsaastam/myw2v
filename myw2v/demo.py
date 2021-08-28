@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import re
+import sys
 import time
 from typing import List, Tuple
 
@@ -14,7 +15,8 @@ from gensim.test.utils import datapath
 from gensim.models import KeyedVectors, Word2Vec
 from gensim.scripts import segment_wiki
 
-import myw2v
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
+from myw2v import myw2v
 
 # see e.g. https://dumps.wikimedia.org/enwiki/20210801/
 URLS = ["https://dumps.wikimedia.org/enwiki/20210801/enwiki-20210801-pages-articles-multistream6.xml-p958046p1483661.bz2"]
@@ -99,7 +101,7 @@ def maybe_train_myw2v_model(input_txt_path: str, outfile_path: str, epochs: int)
     myw2v.do_it(input_txt_path, outfile_path, epochs=epochs)
 
 
-def check_accuracy(vectors_path: str):
+def check_accuracy(vectors_path: str, questions_path: str = datapath("questions-words.txt")):
     acc_path = vectors_path + "_accuracy.json"
     details_path = vectors_path + "_accuracy_details.json"
     if os.path.isfile(acc_path) or os.path.isfile(details_path):
@@ -108,7 +110,7 @@ def check_accuracy(vectors_path: str):
     eval_start = time.time()
     print(f"Loading vectors from path: '{vectors_path}' and running word analogy test...")
     vecs = KeyedVectors.load_word2vec_format(vectors_path, binary=False)
-    acc, details_dict = vecs.evaluate_word_analogies(datapath("questions-words.txt"), case_insensitive=True)
+    acc, details_dict = vecs.evaluate_word_analogies(questions_path, case_insensitive=True)
     details_lite = [(d["section"], len(d["correct"]) / len(d["correct"] + d["incorrect"])) for d in details_dict]
     print(f"Accuracy: {round(100 * acc, 2)} %")
     print(f"Saving model accuracy to '{acc_path}'...")
@@ -211,8 +213,9 @@ if __name__ == "__main__":
     a = parser.parse_args()
     root_data_dir = a.data_dir
 
-    print(f"--- myw2v demo, v{myw2v.MYW2V_VERSION} ---")
+    print(f"Usage: python demo.py [-d <data_dir>]")
     print("")
+    print(f"--- myw2v demo, v{myw2v.MYW2V_VERSION} ---")
     print("This script will:")
     print("1) Download a partial Wikipedia dump")
     print("2) Process it into sentences, saved into plain text files, one line per sentence")
@@ -234,7 +237,7 @@ if __name__ == "__main__":
     print("")
     print(f"---> WILL DOWNLOAD STUFF INTO DIR: '{root_data_dir}'  <- change with '-d <dir_name>' btw")
     print("")
-    print("---> PRESS ANY KEY TO CONTINUE (or Ctrl-C to cancel)")
+    print("---> PRESS ENTER TO CONTINUE (or Ctrl-C to cancel)")
     _ = input()
 
     out_path_txt_dir, out_path_vectors_file = make_out_paths(root_data_dir)

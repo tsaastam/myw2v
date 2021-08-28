@@ -12,6 +12,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import json
 import math
 import os
@@ -187,9 +188,9 @@ def write_vectors(weights_cuda, vocab: List[Tuple[str, float]], out_path: str):
             f.write(f"{word} {v_str}\n")
 
 
-def write_params(params: Dict[str, Any], params_path: str):
-    with open(params_path, "w", encoding="utf-8") as f:
-        f.write(json.dumps(params))
+def write_json(to_jsonify: Dict[str, Any], json_path: str):
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(to_jsonify))
         f.write("\n")
         f.flush()
 
@@ -286,6 +287,7 @@ def step(thread_idx, w1, w2, calc_aux, x, y, k, learning_rate, negsample_array, 
         w1[x, i] += calc_aux[thread_idx, i]
 
 
+# TODO: NOTE: will overwrite any existing vectors + params + stats in "out_file_path{,*}"
 def do_it(data_path: str,
           out_file_path: str,
           epochs: int,
@@ -298,8 +300,7 @@ def do_it(data_path: str,
           lr_max: float = 0.025,
           lr_min: float = 0.0025,
           cuda_threads_per_block: int = 32):
-    # TODO: note: same seed can give different results - this is probably because of kernel execution order differences
-    # - seed can still be useful for unit test
+
     params = {
         "myw2v_version": MYW2V_VERSION,
         "data_path": data_path,
@@ -312,9 +313,16 @@ def do_it(data_path: str,
         "t": t,
         "vocab_freq_exponent": vocab_freq_exponent,
         "lr_max": lr_max,
-        "lr_min": lr_min
+        "lr_min": lr_min,
+        "cuda_threads_per_block": cuda_threads_per_block
     }
+    stats = {
+    }
+    params_path = out_file_path + "_params.json"
+    stats_path = out_file_path + "_stats.json"
 
+    # TODO: note: same seed can give different results - this is probably because of kernel execution order differences
+    # - seed can still be useful for unit test
     seed = 12345
     lr_step = (lr_max-lr_min) / (epochs-1)
 
@@ -361,6 +369,13 @@ def do_it(data_path: str,
     calc_aux_cuda = cuda.to_device(calc_aux)
     print(f"Data transfer in {time.time()-data_transfer_start} s - data size in bytes {data_size_weights:,} weights + {data_size_inputs:,} inputs + {data_size_aux:,} aux = {data_size_weights+data_size_inputs+data_size_aux:,} total")
 
+    stats["sentence_count"] = len(lens)
+    stats["word_count"] = len(inps)
+    stats["approx_data_size_weights"] = data_size_weights
+    stats["approx_data_size_inputs"] = data_size_inputs
+    stats["approx_data_size_aux"] = data_size_aux
+    stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
+
     print(f"Initing CUDA random states for {sentence_count} sentences/threads...")
     random_init_start = time.time()
     random_states_cuda = c_random.create_xoroshiro128p_states(sentence_count, seed=seed)
@@ -381,13 +396,18 @@ def do_it(data_path: str,
         print(f"  Synchronised in {time.time()-sync_start} s")
         print(f"--> Epoch {epoch+1} took {epoch_times[-1]} s")
     print(f"DONE! Times per epoch min/avg/max: {min(epoch_times):0.2f} {np.mean(epoch_times):0.2f} {max(epoch_times):0.2f}")
-    print(f"All epoch times: {epoch_times}")
     print(f"Total training time: {time.time()-calc_start}")
     print(f"Total time: {time.time()-start}")
     print_norms(w1_cuda)
+    stats["epoch_time_min_seconds"] = min(epoch_times)
+    stats["epoch_time_avg_seconds"] = np.mean(epoch_times)
+    stats["epoch_time_max_seconds"] = max(epoch_times)
+    stats["epoch_time_total_seconds"] = sum(epoch_times)
+    stats["epoch_times_all_seconds"] = epoch_times
     print(f"Writing vectors to file: '{out_file_path}'...")
     write_vectors(w1_cuda, vocab, out_file_path)
-    params_path = out_file_path + "_params.json"
     print(f"Writing parameters to file: '{params_path}'...")
-    write_params(params, params_path)
+    write_json(params, params_path)
+    print(f"Writing statistics to file: '{stats_path}'...")
+    write_json(stats, stats_path)
     print("DONE!")
