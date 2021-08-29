@@ -26,7 +26,7 @@ def print_most_similars(vecs: KeyedVectors, words: List[str]) -> None:
 
 if __name__ == '__main__':
     root_maybe = os.path.join(pathlib.Path.cwd(), 'demo_data')
-    txt_path_possibly, _ = demo.make_out_paths(root_maybe)
+    _, txt_path_possibly, _ = demo.make_out_paths(root_maybe)
 
     my_vec = load(txt_path_possibly)
     # TODO just incorporate this into demo.py

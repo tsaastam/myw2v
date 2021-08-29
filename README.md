@@ -10,10 +10,10 @@ Features implemented:
 - skip-gram
 - basic data loading and vocabulary handling
 - for negative sampling, biasing the word frequency counts with a given exponent, e.g. 0.75 (see paper)
-- given a context window size `C`, the actual context window size is random `R` with `R ~ Unif(1, C)`
+- given a maximum context window size `C`, the actual context window size is random `R` with `R ~ Unif(1, C)`
 - basic gradient descent with a linearly decreasing learning rate
 
-Currently all data is loaded into GPU memory first, after which the model is trained. Afterwards the first weight matrix is written to disk in text format ("word2vec format" in gensim).
+Currently all data is loaded into GPU memory first, after which the model is trained. Afterwards the first weight matrix is written to disk in plain text format (called "word2vec format" in gensim).
 
 ## How's the code?
 
@@ -27,13 +27,37 @@ Check out the unit tests (and the rest of the code) to see how things work and w
 
     conda env create -f env_demo.yaml
     conda activate myw2v-demo
-    python mywv2/demo.py
+    python mywv2/demo.py [-d <data_dir>]
+
+The `-d <data_dir>` parameter is optional. The default is `./demo_data`.
+
+Requirements: 2 GB of disk space; CUDA-capable GPU (e.g. NVidia) with, probably, 5 GB or more of GPU RAM; for gensim model, maybe 8 GB of main RAM to read data into memory first (TODO: optimise this part maybe).
 
 The demo code will first download & process a partial Wikipedia dump and then train a myw2v model on it. Notice that this will require a few gigabytes of disk and will also take a while. Please see `demo.py` for details, or just run it and it will print the details and wait for a key press.
 
 After training, the demo code uses gensim to do the standard "word analogy" task on the trained vectors, to gauge accuracy.
 
 In addition, the demo code will also train another word2vec model on the same data, using gensim, which is a well-known and reliable word2vec implementation. Afterwards the same analogy task is done on the gensim vectors as well.
+
+## Demo outputs
+
+Under the given data directory, the following will be created:
+
+    enwiki-20210801-pages-articles-multistream6.xml-p958046p1483661.bz2      # original Wikipedia dump, as downloaded
+    enwiki-20210801-pages-articles-multistream6.xml-p958046p1483661.json.gz  # with-gensim-processed Wikipedia dump
+    txt/                                                                     # Wikipedia data processed into plain text sentences
+
+    vectors                                                                  # output of myw2v, in plain text format
+    vectors_accuracy.json                                                    # gensim's word analogy task results for myw2v output (summary only)
+    vectors_accuracy_details.json                                            # gensim's word analogy task results for myw2v output (full details)
+    vectors_params.json                                                      # myw2v parameters used for training
+    vectors_stats.json                                                       # myw2v statistics about source data
+
+    vectors_gensim                                                           # output of gensim, in plain text format
+    vectors_gensim_accuracy.json                                             # gensim's word analogy task results for gensim output (summary only)
+    vectors_gensim_accuracy_details.json                                     # gensim's word analogy task results for gensim output (summary only)
+    vectors_gensim_params.json                                               # gensim parameters used for training
+    vectors_gensim_stats.json                                                # gensim statistics about source data
 
 ## TODO
 

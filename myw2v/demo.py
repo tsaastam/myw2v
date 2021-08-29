@@ -7,6 +7,7 @@ import sys
 import time
 from typing import List, Tuple
 
+import numpy as np
 import requests
 import tqdm
 from gensim import utils
@@ -15,6 +16,7 @@ from gensim.test.utils import datapath
 from gensim.models import KeyedVectors, Word2Vec
 from gensim.scripts import segment_wiki
 
+# TODO: following line shouldn't be needed but pycharm is weird and import seems to not work properly without
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
 from myw2v import myw2v
 
@@ -23,11 +25,11 @@ URLS = ["https://dumps.wikimedia.org/enwiki/20210801/enwiki-20210801-pages-artic
 FILENAMES = [re.sub(r".*/([^/]+)$", r"\1", url) for url in URLS]
 
 
-def make_out_paths(root: str) -> Tuple[str, str]:
+def make_out_paths(root: str) -> Tuple[str, str, str]:
     print(f"Checking target directory: '{root}'...")
     pathlib.Path(root).mkdir(parents=True, exist_ok=True)
     # was ok
-    return os.path.join(root, "txt"), os.path.join(root, "vectors")
+    return os.path.join(root, "txt"), os.path.join(root, "vectors"), os.path.join(root, "vectors_gensim")
 
 
 def maybe_download(urls: List[str], filenames: List[str], out_path_root: str) -> List[str]:
@@ -145,6 +147,7 @@ def maybe_train_gensim_model(input_txt_path: str, outfile_path: str, epochs: int
     start = time.time()
     txt_files = myw2v.get_data_file_names(input_txt_path, seed=12345)
     sents: List[List[str]] = []
+    word_count = 0
     for txt_file in txt_files:
         with open(os.path.join(input_txt_path, txt_file), encoding="utf-8") as f:
             for line in f:
@@ -152,6 +155,7 @@ def maybe_train_gensim_model(input_txt_path: str, outfile_path: str, epochs: int
                 if len(words) < 2:
                     continue
                 sents.append(words)
+                word_count += len(words)
     print(f"Data read in {time.time()-start} s. Building vocab...")
     vocab_start = time.time()
     my_model: Word2Vec = Word2Vec(workers=12, **params)
@@ -166,7 +170,27 @@ def maybe_train_gensim_model(input_txt_path: str, outfile_path: str, epochs: int
                    callbacks=[mlc])
     print(f"Trained in {time.time()-train_start} s! Writing vectors to '{outfile_path}'...")
     my_model.wv.save_word2vec_format(outfile_path)
+
+    params_path = outfile_path + "_params.json"
+    stats_path = outfile_path + "_stats.json"
+    print(f"Writing parameters to file: '{params_path}'...")
+    myw2v.write_json(params, params_path)
+    print(f"Writing statistics to file: '{stats_path}'...")
+    myw2v.write_json(_get_gensim_stats(len(sents), word_count, mlc.epoch_times), stats_path)
     print(f"DONE! Total time {time.time()-start} s")
+
+
+# TODO maybe refactor this into myw2v's similar logic
+def _get_gensim_stats(sent_cnt: int, word_cnt: int, epoch_times: List[float]):
+    stats = {}
+    stats["sentence_count"] = sent_cnt
+    stats["word_count"] = word_cnt
+    stats["epoch_time_min_seconds"] = min(epoch_times)
+    stats["epoch_time_avg_seconds"] = np.mean(epoch_times)
+    stats["epoch_time_max_seconds"] = max(epoch_times)
+    stats["epoch_time_total_seconds"] = sum(epoch_times)
+    stats["epoch_times_all_seconds"] = epoch_times
+    return stats
 
 
 def _clean_up(s: str) -> List[List[str]]:
@@ -196,13 +220,13 @@ def _write_batch(batch: List[List[str]], out_path: str, i: int) -> None:
 class EpochTimer(CallbackAny2Vec):
     def __init__(self):
         self.epoch = 1
-        self.stats = []
-        self.previous_epoch_time = time.time()
+        self.epoch_times: List[float] = []
+        self.previous_epoch_time: float = time.time()
 
     def on_epoch_end(self, model):
         epoch_seconds = time.time() - self.previous_epoch_time
         print(f"-> Epoch {self.epoch} took {epoch_seconds} s")
-        self.stats.append({"epoch": self.epoch, "epoch_time_seconds": epoch_seconds})
+        self.epoch_times.append(epoch_seconds)
         self.epoch += 1
         self.previous_epoch_time = time.time()
 
@@ -240,7 +264,7 @@ if __name__ == "__main__":
     print("---> PRESS ENTER TO CONTINUE (or Ctrl-C to cancel)")
     _ = input()
 
-    out_path_txt_dir, out_path_vectors_file = make_out_paths(root_data_dir)
+    out_path_txt_dir, out_path_vectors_file, out_path_vectors_file_gensim = make_out_paths(root_data_dir)
 
     # about 2 min per file (approx 500 MB)
     filenames = maybe_download(URLS, FILENAMES, root_data_dir)
@@ -249,14 +273,12 @@ if __name__ == "__main__":
     # about 2.5 min per json file (approx 660 MB) - multiple output files (1000+)
     maybe_clean_up_json(jsons, out_path_txt_dir)
 
-    # about 10 minutes for 10 epochs - 40 s per epoch, rest overhead (TODO: other settings)
+    # about 10 minutes for 10 epochs - 40 s per epoch, rest overhead
     maybe_train_myw2v_model(out_path_txt_dir, out_path_vectors_file, epochs=10)
     # about 6 minutes, funnily enough
     check_accuracy(out_path_vectors_file)
 
     # about 15 minutes for 10 epochs - 70 s per epoch, rest overhead
-    TODO_gensim_path = out_path_vectors_file+"_gensim_joo"
-
-    maybe_train_gensim_model(out_path_txt_dir, TODO_gensim_path, epochs=10)
+    maybe_train_gensim_model(out_path_txt_dir, out_path_vectors_file_gensim, epochs=10)
     # about 6 minutes, funnily enough
-    check_accuracy(TODO_gensim_path)
+    check_accuracy(out_path_vectors_file_gensim)
