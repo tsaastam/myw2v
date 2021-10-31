@@ -59,10 +59,29 @@ Under the given data directory, the following will be created:
     vectors_gensim_params.json                                               # gensim parameters used for training
     vectors_gensim_stats.json                                                # gensim statistics about source data
 
+## Results
+
+Here are the approximate results of the demo code above, when evaluated on the standard word analogy test:
+
+* gensim: approx. 48-49%
+* myw2v: approx. 44-45% (~ 10% lower)
+
+The training times of the demo (on my PC) were:
+
+* gensim: approx. 11.5 minutes
+* myw2v: approx. 6.5 minutes (~ 40% faster)
+
+See also [results](doc/results.md) of running another comparison of gensim vs myw2v.
+
+## Remarks and thoughts on the implementation
+
+See [blog post here](https://lobotomys.blogspot.com/2021/09/implementing-word2vec-on-gpu.html).
+
 ## TODO
 
 - Parameterise all the model parameters properly
-- Report demo results maybe
+- "Streaming" data handling would be nice (as opposed to loading everything into memory all at once)
+- Perhaps try to optimise the code more
 
 ## Licence
 
